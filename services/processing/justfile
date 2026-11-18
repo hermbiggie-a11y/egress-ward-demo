@@ -1,0 +1,37 @@
+set shell := ["bash", "-uc"]
+
+[group('processing')]
+setup:
+    uv sync --extra offline
+
+[group('processing')]
+check:
+    uv run --extra offline ruff check .
+    uv run --extra offline ruff format --check .
+    uv run --extra offline mypy src
+
+[group('processing')]
+test:
+    uv run --extra offline pytest
+
+[group('processing')]
+generate data="synthetic-data":
+    uv run egress-ward-process generate-synthetic \
+      --normal-fixture ../../fixtures/expected/normal.json \
+      --suspicious-fixture ../../fixtures/expected/suspicious.json \
+      --output-dir {{ data }}
+
+[group('processing')]
+train data="synthetic-data" artifacts="artifacts": (generate data)
+    uv run --extra offline egress-ward-process train-bundle \
+      --dataset-dir {{ data }} --artifact-dir {{ artifacts }}
+
+[group('processing')]
+demo model="artifacts/registry/isolation-forest-001.pkl":
+    uv run egress-ward-process detect \
+      --events ../../fixtures/expected/suspicious.json \
+      --baseline ../../fixtures/expected/normal.json --model {{ model }}
+
+[group('processing')]
+demo-live ingestion_url="http://127.0.0.1:8100":
+    uv run egress-ward-process demo-live --ingestion-url {{ ingestion_url }}
